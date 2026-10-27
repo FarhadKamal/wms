@@ -1,0 +1,13 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+# Generated — rebuilt by `npx prisma generate` and `npm run build`
+/src/generated/prisma
+/dist
+*.tsbuildinfo
+/coverage
+
+# Logs & OS files
+*.log
+.DS_Store

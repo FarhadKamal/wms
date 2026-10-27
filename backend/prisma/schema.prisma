@@ -1,0 +1,384 @@
+// Azneo WMS — database schema.
+// Mirrors the prototype (wms-prototype.html): Warehouse → Block → grid cells →
+// Rack (from a RackType) → Shelf → Bay → Plate, plus units, documents and history.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WarehouseStatus {
+  ACTIVE
+  PLANNED
+}
+
+/// What a block grid cell is used for. Only STORAGE cells can hold racks, plates or stock.
+enum CellUse {
+  STORAGE
+  PASSAGE
+  OFFICE
+  TOILET
+  SERVICE
+  UNLOAD
+  FORKLIFT
+}
+
+enum RackDirection {
+  ROW // along a row (left → right)
+  COLUMN // down a column (top → bottom)
+}
+
+/// Where stock can physically sit.
+enum LocationKind {
+  RECEIVING // the warehouse's receiving / staging area
+  BAY // one bay of a rack shelf
+  SHELF // a whole shelf of a rack with 0 bays
+  PLATE // a plate (pallet) — on a shelf/bay or on a floor cell
+  FLOOR // a storage floor cell without plates (e.g. car parking)
+}
+
+/// How units of a category are identified.
+enum IdRule {
+  GENERATED // WMS generates a unique unit ID (pumps)
+  VIN // the vehicle's VIN is the unit ID (cars)
+}
+
+enum UnitStatus {
+  STAGING // received, waiting in the Receiving Area
+  IN_STOCK // put away in a location
+  DISPATCHED // left the warehouse
+}
+
+enum DocType {
+  RCV // Receiving Challan
+  DSP // Dispatch Challan
+  TRF // Transfer Slip (internal move)
+}
+
+enum EventType {
+  RECEIVED
+  PUT_AWAY
+  MOVED
+  DISPATCHED
+}
+
+// ---------------------------------------------------------------- structure
+
+model Warehouse {
+  id        String          @id @default(uuid()) @db.Uuid
+  code      String          @unique @db.VarChar(4)
+  name      String
+  address   String
+  landmark  String          @default("")
+  areaSqft  Float
+  status    WarehouseStatus @default(PLANNED)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  blocks    Block[]
+  racks     Rack[]
+  plates    Plate[]
+  locations Location[]
+  boards    BayBoard[]
+  units     Unit[]
+  documents Document[]
+
+  @@map("warehouses")
+}
+
+model Block {
+  id            String   @id @default(uuid()) @db.Uuid
+  warehouseId   String   @db.Uuid
+  code          String   @db.VarChar(3) // "A", "B" … used in location addresses
+  name          String
+  areaSqft      Float
+  rows          Int
+  cols          Int
+  clearHeightCm Int      @default(400)
+  note          String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  cells     GridCell[]
+  racks     Rack[]
+  plates    Plate[]
+  locations Location[]
+
+  @@unique([warehouseId, code])
+  @@map("blocks")
+}
+
+/// One cell of a block's rows × columns grid. Cells are equal: area = block area ÷ cells.
+model GridCell {
+  id       String  @id @default(uuid()) @db.Uuid
+  blockId  String  @db.Uuid
+  row      Int
+  col      Int
+  use      CellUse @default(STORAGE)
+  areaName String? // e.g. "Office" for a multi-cell area
+
+  block Block @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, row, col])
+  @@map("grid_cells")
+}
+
+model RackType {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique
+  lengthCm      Float
+  depthCm       Float
+  shelfCount    Int
+  shelfHeightCm Float // clear height of one shelf level
+  shelfCapKg    Float // weight limit of one shelf (all its bays together)
+  createdAt     DateTime @default(now())
+
+  racks Rack[]
+
+  @@map("rack_types")
+}
+
+model PlateType {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @unique
+  lengthCm           Float
+  widthCm            Float
+  floorStackHeightCm Float    @default(0) // max load height on the floor; 0 = shelf use only
+  capKg              Float
+  createdAt          DateTime @default(now())
+
+  plates Plate[]
+
+  @@map("plate_types")
+}
+
+model Rack {
+  id            String        @id @default(uuid()) @db.Uuid
+  warehouseId   String        @db.Uuid
+  blockId       String        @db.Uuid
+  code          String        @db.VarChar(8) // "RK1"
+  name          String
+  rackTypeId    String        @db.Uuid
+  startRow      Int
+  startCol      Int
+  direction     RackDirection @default(ROW)
+  lengthCells   Int
+  bays          Int           @default(0) // 0 = shelf only
+  mergedShelves Int[]         @default([]) // lower level of each merged pair, e.g. [3] = S3+S4
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  block     Block      @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  rackType  RackType   @relation(fields: [rackTypeId], references: [id], onDelete: Restrict)
+  shelves   Shelf[]
+  plates    Plate[]
+  locations Location[]
+
+  @@unique([warehouseId, code])
+  @@map("racks")
+}
+
+/// Generated from the rack's type and merges. Holds the shelf's weight limit.
+model Shelf {
+  id       String @id @default(uuid()) @db.Uuid
+  rackId   String @db.Uuid
+  level    Int // lowest level of the shelf (S3 for a merged S3+S4)
+  span     Int    @default(1)
+  heightCm Float
+  capKg    Float
+
+  rack      Rack       @relation(fields: [rackId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@unique([rackId, level])
+  @@map("shelves")
+}
+
+/// A labelled plate (pallet): either inside a rack position or on a floor cell.
+model Plate {
+  id          String   @id @default(uuid()) @db.Uuid
+  warehouseId String   @db.Uuid
+  label       String   @unique // "PL-CTG-0004"
+  plateTypeId String   @db.Uuid
+  // In a rack position (bay 0 = whole shelf of a rack with no bays) …
+  rackId      String?  @db.Uuid
+  shelfLevel  Int?
+  bay         Int?
+  // … or on a floor cell.
+  blockId     String?  @db.Uuid
+  cellRow     Int?
+  cellCol     Int?
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  plateType PlateType @relation(fields: [plateTypeId], references: [id], onDelete: Restrict)
+  rack      Rack?     @relation(fields: [rackId], references: [id], onDelete: Restrict)
+  block     Block?    @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  location  Location?
+
+  @@map("plates")
+}
+
+/// Every place stock can sit, regenerated from the structure whenever it changes.
+/// Units reference it with onDelete: Restrict, so a location holding stock can't vanish.
+model Location {
+  id          String       @id @default(uuid()) @db.Uuid
+  warehouseId String       @db.Uuid
+  code        String // stable key: address, or the plate label for plates
+  address     String // what staff read, e.g. "A-RK2-S3-B1" or "A-RK2-S1-B1-P2"
+  kind        LocationKind
+  blockId     String?      @db.Uuid
+  rackId      String?      @db.Uuid
+  shelfId     String?      @db.Uuid
+  bay         Int?
+  plateId     String?      @unique @db.Uuid
+  cellRow     Int?
+  cellCol     Int?
+  lengthCm    Float
+  widthCm     Float
+  heightCm    Float
+  capKg       Float? // own limit (plates); shelf limit lives on Shelf
+  boardCode   String? // bay board this location is shown on
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  block     Block?    @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  rack      Rack?     @relation(fields: [rackId], references: [id], onDelete: Restrict)
+  shelf     Shelf?    @relation(fields: [shelfId], references: [id], onDelete: Restrict)
+  plate     Plate?    @relation(fields: [plateId], references: [id], onDelete: Restrict)
+  units     Unit[]
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId, address])
+  @@map("locations")
+}
+
+/// Physical board on a rack position (or floor cell) showing items, quantity and weight.
+model BayBoard {
+  id            String    @id @default(uuid()) @db.Uuid
+  warehouseId   String    @db.Uuid
+  code          String // rack position or floor cell code
+  dirty         Boolean   @default(false)
+  lastUpdatedAt DateTime?
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, code])
+  @@map("bay_boards")
+}
+
+// ---------------------------------------------------------------- products
+
+model Category {
+  id     String @id @default(uuid()) @db.Uuid
+  code   String @unique // "pump", "car"
+  name   String
+  idRule IdRule @default(GENERATED)
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id           String  @id @default(uuid()) @db.Uuid
+  sku          String  @unique
+  name         String
+  categoryId   String  @db.Uuid
+  brand        String
+  lengthCm     Float
+  widthCm      Float
+  heightCm     Float
+  weightKg     Float
+  reorderPoint Int     @default(0)
+  stackable    Boolean @default(true) // false for vehicles: they need floor area, not volume
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  units    Unit[]
+
+  @@map("products")
+}
+
+// ---------------------------------------------------------------- stock & history
+
+/// One physical item. uid = WMS unit ID (QR) or VIN. Never changes.
+model Unit {
+  id             String     @id @default(uuid()) @db.Uuid
+  uid            String     @unique
+  productId      String     @db.Uuid
+  warehouseId    String     @db.Uuid
+  status         UnitStatus @default(STAGING)
+  locationId     String?    @db.Uuid // null once dispatched
+  receivingDocId String     @db.Uuid
+  dispatchDocId  String?    @db.Uuid
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  location     Location?       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  receivingDoc Document        @relation("ReceivedOn", fields: [receivingDocId], references: [id], onDelete: Restrict)
+  dispatchDoc  Document?       @relation("DispatchedOn", fields: [dispatchDocId], references: [id], onDelete: Restrict)
+  events       MovementEvent[]
+
+  @@index([warehouseId, status])
+  @@index([locationId])
+  @@map("units")
+}
+
+/// Receiving / Dispatch Challan or Transfer Slip. No product moves without one.
+model Document {
+  id          String   @id @default(uuid()) @db.Uuid
+  warehouseId String   @db.Uuid
+  no          String   @unique // "RCV-CTG-2026-0001"
+  type        DocType
+  docDate     DateTime @db.Date
+  party       String // supplier / receiver / "Internal move"
+  reference   String   @default("") // supplier ref / destination / reason
+  preparedBy  String
+  toCode      String? // transfers: destination address (snapshot)
+  createdAt   DateTime @default(now())
+
+  warehouse  Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  received   Unit[]          @relation("ReceivedOn")
+  dispatched Unit[]          @relation("DispatchedOn")
+  events     MovementEvent[]
+
+  @@index([warehouseId, type, docDate])
+  @@map("documents")
+}
+
+/// Full history per unit. From/to are address snapshots so history survives layout changes.
+model MovementEvent {
+  id         BigInt    @id @default(autoincrement())
+  unitId     String    @db.Uuid
+  documentId String    @db.Uuid
+  type       EventType
+  fromCode   String?
+  toCode     String?
+  by         String
+  at         DateTime  @default(now())
+
+  unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([unitId, at])
+  @@map("movement_events")
+}
+
+/// Atomic counters (incremented with UPDATE … RETURNING inside the same transaction):
+/// "DOC:CTG:RCV:2026" challan numbers, "PLATE:CTG" plate labels,
+/// "UNIT:PDR-PQM60" unit serials — global, so unit IDs are unique across warehouses.
+model Sequence {
+  key  String @id
+  last Int    @default(0)
+
+  @@map("sequences")
+}
