@@ -35,6 +35,21 @@ Tests: `npm test` (business rules, no DB) · `npm run test:e2e` (API — **wipes
 | 5 Racks | `GET …/racks/suggest`, `POST …/racks`, `PATCH/DELETE …/racks/:rack` |
 | 6 Plates | `GET …/plates/suggest-floor`, `POST …/plates`, `DELETE …/plates/:label` |
 
+### Stock movement API (module 2)
+
+| Flow | Endpoints |
+|---|---|
+| Receive (IN) | `POST /api/warehouses/:wh/receipts` — one challan per delivery; unit IDs `SKU-0001…` or VINs |
+| Put-away | `GET …/putaway` (waiting groups), `POST …/suggest` (best locations + best quantity), `POST …/putaway` |
+| Move | `POST …/transfers` — Transfer Slip; unit IDs never change |
+| Dispatch (OUT) | `POST …/dispatches` — one challan per receiver |
+| Records | `GET …/dashboard`, `…/stock`, `…/stock/:sku`, `…/documents`, `/api/documents/:no`, `/api/units/:uid`, `…/positions/:code`, `…/scan?code=` |
+| Bay boards | `GET …/boards`, `POST …/boards/:code/updated` (`*` = all) |
+
+Every movement is one transaction: the units and the target location/shelf are locked (`FOR UPDATE`), space and the
+shelf weight limit are re-checked against what is there at that moment, then the document, units, history and bay-board
+flags are written together. Two people can't overload one shelf at the same time (covered by an e2e test).
+
 Every structural change is checked against the stock already placed (`src/domain/change.ts`) and refused with a 409 and a plain message ("Stock is still in A-RK3-S3-B1 — move it first") if unsafe.
 
 ### Where things live
@@ -60,7 +75,11 @@ npm install
 npm run dev                     # http://localhost:5173 (calls the API through Vite's /api proxy)
 ```
 
-Pages: Dashboard `#/overview` · Layout & Racks `#/layout` · Warehouse Setup `#/setup/<step>` (warehouse, blocks, grid, types, racks, plates).
+Pages: Dashboard `#/overview` · Receive `#/receive` · Put-away `#/putaway` · Move `#/move` · Dispatch `#/dispatch` ·
+Layout & Racks `#/layout` · Bay Boards `#/boards` · Warehouse Setup `#/setup/<step>` · Stock `#/stock` · Scan & Lookup `#/lookup` · Challans `#/challans`.
+
+Scanning: the scan boxes accept a handheld scanner (it types the code and presses Enter) or typing. QR contents:
+units `AZWMS|U|<unit id>`, locations `AZWMS|L|<wh>|<code>`, documents `AZWMS|D|<no>`.
 
 ## Notes
 

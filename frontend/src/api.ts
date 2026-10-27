@@ -37,6 +37,49 @@ export interface Structure {
   };
 }
 
+// ---------------------------------------------------------------- stock movement
+
+export interface Product {
+  id: string; sku: string; name: string; brand: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number;
+  reorderPoint: number; stackable: boolean; category: { code: string; name: string; idRule: 'GENERATED' | 'VIN' };
+}
+export type DocType = 'RCV' | 'DSP' | 'TRF';
+export interface DocLine { sku: string; name: string; byVin: boolean; uids: string[]; from: Record<string, number>; kg: number }
+export interface Doc {
+  no: string; type: DocType; docDate: string; party: string; reference: string; preparedBy: string; toCode: string | null; createdAt: string;
+  warehouse: { code: string; name: string; address: string }; units: number; totalKg: number; lines: DocLine[];
+}
+export interface DocRow { no: string; type: DocType; docDate: string; party: string; reference: string; createdAt: string; units: number; products: Array<{ name: string; qty: number }> }
+export interface PendingGroup {
+  doc: string; docDate: string; sku: string; uids: string[];
+  product: { sku: string; name: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number; stackable: boolean; category: { idRule: 'GENERATED' | 'VIN' } };
+}
+export interface Suggestion { code: string; address: string; kind: string; note: string; sameProduct: boolean; empty: boolean }
+export interface StockRow {
+  sku: string; name: string; brand: string; category: string; idRule: 'GENERATED' | 'VIN'; lengthCm: number; widthCm: number; heightCm: number; weightKg: number;
+  reorderPoint: number; onShelf: number; inReceiving: number; total: number; locations: number;
+}
+export interface UnitDetail {
+  uid: string; status: 'STAGING' | 'IN_STOCK' | 'DISPATCHED'; warehouse: { code: string; name: string };
+  product: Product; location: { code: string; address: string; kind: string; boardCode: string | null } | null;
+  receivingDoc: { no: string }; dispatchDoc: { no: string; party: string } | null;
+  events: Array<{ id: string; type: 'RECEIVED' | 'PUT_AWAY' | 'MOVED' | 'DISPATCHED'; at: string; by: string; fromCode: string | null; toCode: string | null; document: { no: string; party: string } }>;
+}
+export interface ItemGroup { sku: string; name: string; qty: number; kg: number; uids: string[] }
+export interface Position {
+  board: string | null; description: string; heightCm?: number; items: ItemGroup[]; qty: number; kg: number;
+  plates: Array<{ label: string; address: string; type: string; capKg: number | null; items: ItemGroup[]; kg: number }>;
+  shelf: { level: number; span: number; heightCm: number; capKg: number; usedKg: number; volumeCm3: number; usedCm3: number } | null;
+  boardDirty: boolean; boardUpdatedAt: string | null;
+  events: Array<{ type: string; at: string; doc: string; by: string; inbound: boolean; from: string | null; to: string | null }>;
+}
+export interface BoardRow { code: string; lastUpdatedAt: string | null; onRack: boolean; items: Array<{ name: string; qty: number; kg: number }>; qty: number; kg: number }
+export interface Dashboard {
+  inStock: number; staging: number; receivedToday: number; dispatchedToday: number; boardsToUpdate: number;
+  latestDocs: DocRow[]; lowStock: Array<{ sku: string; name: string; total: number; reorderPoint: number }>;
+}
+export type ScanResult = { type: 'unit'; uid: string; warehouse: string } | { type: 'document'; no: string } | { type: 'location'; board: string; kind: string };
+
 export class ApiError extends Error {
   readonly status: number;
   constructor(message: string, status: number) { super(message); this.status = status; }
@@ -85,4 +128,31 @@ export const api = {
   createPlates: (wh: string, b: { plateTypeId: string; count: number } & ({ rackCode: string; shelfLevel: number; bay: number } | { blockCode: string; row: number; col: number })) =>
     call<{ labels: string[] }>('POST', `/warehouses/${wh}/plates`, b),
   deletePlate: (wh: string, label: string) => call('DELETE', `/warehouses/${wh}/plates/${label}`),
+
+  products: () => call<Product[]>('GET', '/products'),
+  receive: (wh: string, b: { party: string; reference?: string; date?: string; preparedBy: string; lines: Array<{ sku: string; qty: number; vins?: string[] }> }) => call<Doc>('POST', `/warehouses/${wh}/receipts`, b),
+  pending: (wh: string) => call<PendingGroup[]>('GET', `/warehouses/${wh}/putaway`),
+  suggest: (wh: string, uids: string[], exclude?: string) => call<{ suggestions: Suggestion[]; bestQty: number | null }>('POST', `/warehouses/${wh}/suggest`, { uids, exclude }),
+  putAway: (wh: string, b: { uids: string[]; location: string; by: string }) => call<{ placed: number; location: string; note: string }>('POST', `/warehouses/${wh}/putaway`, b),
+  transfer: (wh: string, b: { uids: string[]; location: string; by: string; reason?: string }) => call<Doc>('POST', `/warehouses/${wh}/transfers`, b),
+  dispatch: (wh: string, b: { party: string; destination?: string; date?: string; preparedBy: string; uids: string[] }) => call<Doc>('POST', `/warehouses/${wh}/dispatches`, b),
+  dashboard: (wh: string) => call<Dashboard>('GET', `/warehouses/${wh}/dashboard`),
+  stock: (wh: string) => call<StockRow[]>('GET', `/warehouses/${wh}/stock`),
+  stockOf: (wh: string, sku: string) => call<Array<{ address: string; kind: string; boardCode: string | null; uids: string[] }>>('GET', `/warehouses/${wh}/stock/${encodeURIComponent(sku)}`),
+  documents: (wh: string, type?: DocType) => call<DocRow[]>('GET', `/warehouses/${wh}/documents${type ? `?type=${type}` : ''}`),
+  document: (no: string) => call<Doc>('GET', `/documents/${encodeURIComponent(no)}`),
+  unit: (uid: string) => call<UnitDetail>('GET', `/units/${encodeURIComponent(uid)}`),
+  position: (wh: string, code: string) => call<Position>('GET', `/warehouses/${wh}/positions/${encodeURIComponent(code)}`),
+  scan: (wh: string, code: string) => call<ScanResult>('GET', `/warehouses/${wh}/scan?${q({ code })}`),
+  boards: (wh: string) => call<BoardRow[]>('GET', `/warehouses/${wh}/boards`),
+  boardUpdated: (wh: string, code: string) => call<{ updated: number }>('POST', `/warehouses/${wh}/boards/${encodeURIComponent(code)}/updated`),
+};
+
+/** Today in Bangladesh time (UTC+6), as YYYY-MM-DD. */
+export const todayLocal = () => new Date(Date.now() + 6 * 3600_000).toISOString().slice(0, 10);
+/** Strip a scanner's QR prefix ("AZWMS|U|…") the same way the API does. */
+export const parseScan = (raw: string) => {
+  const s = raw.trim().toUpperCase();
+  const m = s.match(/^AZWMS\|[ULD]\|(?:[A-Z]{2,4}\|)?(.+)$/);
+  return m ? m[1] : s;
 };

@@ -35,9 +35,8 @@ export function RacksStep({ blockCode, setBlockCode, rackCode, setRackCode }: {
   const selected = racks.find((r) => r.code === rackCode) ?? null;
 
   const create = async () => {
-    let code = '';
-    const ok = await run(async () => { code = (await api.createRack(wh, { blockCode: b.code, ...f })).code; }, 'Rack placed.');
-    if (ok) setRackCode(code);
+    const r = await run(() => api.createRack(wh, { blockCode: b.code, ...f }), (x) => `Rack ${x.code} placed.`);
+    if (r) setRackCode(r.code);
   };
 
   return (

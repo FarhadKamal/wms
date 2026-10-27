@@ -2,7 +2,9 @@ import type { Plate, Rack } from '../api';
 import { pct } from '../autofill';
 
 /** Rack detail: every shelf (top first) with weight and space bars, its bays and plates. */
-export function RackDrawer({ rack, plates, onClose, onConfigure }: { rack: Rack; plates: Plate[]; onClose: () => void; onConfigure?: () => void }) {
+export function RackDrawer({ rack, plates, onClose, onConfigure, onPosition }: {
+  rack: Rack; plates: Plate[]; onClose: () => void; onConfigure?: () => void; onPosition?: (code: string) => void;
+}) {
   const t = rack.rackType;
   return (
     <>
@@ -36,8 +38,9 @@ export function RackDrawer({ rack, plates, onClose, onConfigure }: { rack: Rack;
                 <div className="pos-row" style={{ gridTemplateColumns: `repeat(${positions.length}, minmax(0, 1fr))` }}>
                   {positions.map((bay) => {
                     const ps = plates.filter((p) => p.parent.kind === 'POSITION' && p.parent.rackCode === rack.code && p.parent.shelfLevel === s.level && p.parent.bay === bay);
+                    const code = `${rack.blockCode}-${rack.code}-S${s.level}${bay ? `-B${bay}` : ''}`;
                     return (
-                      <div key={bay} className="pos-box">
+                      <div key={bay} className={`pos-box${onPosition ? ' click' : ''}`} onClick={() => onPosition?.(code)} title={code}>
                         <div className="pl">{bay ? `B${bay}` : 'Whole shelf'}</div>
                         {ps.map((p) => <span key={p.label} className="plate-chip" title={p.address ?? ''}>{p.label.split('-').pop()}{p.units ? ` · ${p.units}` : ''}</span>)}
                         {!ps.length && <div className="note">no plates</div>}

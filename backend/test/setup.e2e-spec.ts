@@ -81,14 +81,14 @@ describe('Warehouse Setup API (e2e)', () => {
     expect(body.summary).toMatchObject({ racks: 5, plates: 19, locations: 144 });
   });
 
+  // Rack 2's upper shelves: the stock tests never put anything there, so file order doesn't matter.
   it('merges and splits shelves', async () => {
-    await api().patch('/api/warehouses/CTG/racks/RK1').send({ mergedShelves: [1] }).expect(200);
-    let rk1 = (await api().get('/api/warehouses/CTG/structure')).body.racks[0];
-    expect(rk1.shelves[0]).toMatchObject({ level: 1, span: 2, heightCm: 120 });
-    await api().patch('/api/warehouses/CTG/racks/RK1').send({ mergedShelves: [1, 2] }).expect(400); // overlapping merges
-    await api().patch('/api/warehouses/CTG/racks/RK1').send({ mergedShelves: [] }).expect(200);
-    rk1 = (await api().get('/api/warehouses/CTG/structure')).body.racks[0];
-    expect(rk1.shelves).toHaveLength(4);
+    const rk2 = async () => (await api().get('/api/warehouses/CTG/structure')).body.racks.find((r: { code: string }) => r.code === 'RK2');
+    await api().patch('/api/warehouses/CTG/racks/RK2').send({ mergedShelves: [3] }).expect(200);
+    expect((await rk2()).shelves.at(-1)).toMatchObject({ level: 3, span: 2, heightCm: 120 });
+    await api().patch('/api/warehouses/CTG/racks/RK2').send({ mergedShelves: [2, 3] }).expect(400); // overlapping merges
+    await api().patch('/api/warehouses/CTG/racks/RK2').send({ mergedShelves: [] }).expect(200);
+    expect((await rk2()).shelves).toHaveLength(4);
   });
 
   it('suggests a floor cell for plates and places them', async () => {
