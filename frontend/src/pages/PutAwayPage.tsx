@@ -6,7 +6,7 @@ import { useWms } from '../wms';
 
 /** Units waiting in the Receiving Area → a shelf / bay / plate / floor cell. Scan unit, scan location. */
 export function PutAwayPage() {
-  const { wh, version, user, run } = useWms();
+  const { wh, version, run } = useWms();
   const [groups, setGroups] = useState<PendingGroup[]>([]);
   const [key, setKey] = useState<string | null>(null);
   const [only, setOnly] = useState<string[] | null>(null); // a single scanned unit
@@ -45,7 +45,7 @@ export function PutAwayPage() {
     setMsg({ t: `Scanned ${uid}. Now scan or pick its location.`, c: 'ok' });
   };
   const confirm = async (location: string) => {
-    const r = await run(() => api.putAway(wh, { uids: moving, location, by: user }), (x) => `${x.placed} unit${x.placed === 1 ? '' : 's'} put away to ${x.location} (${x.note}).`);
+    const r = await run(() => api.putAway(wh, { uids: moving, location }), (x) => `${x.placed} unit${x.placed === 1 ? '' : 's'} put away to ${x.location} (${x.note}).`);
     if (r) { setOnly(null); setDest(null); setMsg(null); }
   };
   const scanLocation = async (raw: string) => {

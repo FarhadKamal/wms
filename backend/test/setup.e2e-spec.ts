@@ -1,22 +1,16 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import request from 'supertest';
-import { AppModule } from '../src/app.module.js';
+import { INestApplication } from '@nestjs/common';
+import { TEST_ADMIN_PASSWORD, bootApp, client, login } from './helpers.js';
 
 // Runs against the TEST database, freshly reset and seeded with the Chittagong layout (see global-setup.ts).
 describe('Warehouse Setup API (e2e)', () => {
   let app: INestApplication;
-  let api: () => ReturnType<typeof request>;
+  let api: () => ReturnType<typeof client>;
   let typeA: string, shelfPlate: string, floorPallet: string;
 
   beforeAll(async () => {
-    expect(process.env.DATABASE_URL).toMatch(/_test\?/); // never run against dev/live data
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await app.init();
-    api = () => request(app.getHttpServer());
+    app = await bootApp();
+    const token = await login(app, 'admin', TEST_ADMIN_PASSWORD);
+    api = () => client(app, token);
     const rt = (await api().get('/api/rack-types')).body;
     const pt = (await api().get('/api/plate-types')).body;
     typeA = rt.find((t: { name: string }) => t.name === 'Type A').id;

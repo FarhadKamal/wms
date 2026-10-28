@@ -8,7 +8,7 @@ import { UnitList, useUnitPicker } from './UnitPicker';
 
 /** Internal move: the unit's QR never changes — the WMS updates its location and logs a Transfer Slip. */
 export function MovePage() {
-  const { wh, user, run } = useWms();
+  const { wh, run } = useWms();
   const picker = useUnitPicker('move');
   const [sugg, setSugg] = useState<Suggestion[]>([]);
   const [dest, setDest] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function MovePage() {
 
   const submit = async () => {
     if (!dest) return;
-    const r = await run(() => api.transfer(wh, { uids, location: dest, by: user, reason }), (d) => `${d.units} units moved on ${d.no}.`);
+    const r = await run(() => api.transfer(wh, { uids, location: dest, reason }), (d) => `${d.units} units moved on ${d.no}.`);
     if (r) { setDoc(r); picker.clear(); setDest(null); setReason(''); }
   };
 

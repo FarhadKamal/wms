@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Actor, seesAllWarehouses } from '../auth/permissions.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { changeProblem } from '../domain/change.js';
 import { autoLengthCells, cellAreaSqft, cellSideCm, shelvesOf, weightBand } from '../domain/geometry.js';
@@ -43,8 +44,10 @@ export class SetupService {
 
   // ---------------------------------------------------------------- warehouses
 
-  listWarehouses() {
+  /** Only the warehouses this user may see. */
+  listWarehouses(u: Actor) {
     return this.prisma.warehouse.findMany({
+      where: seesAllWarehouses(u) ? {} : { code: { in: u.warehouses } },
       orderBy: { createdAt: 'asc' },
       select: { code: true, name: true, address: true, landmark: true, areaSqft: true, status: true, _count: { select: { blocks: true, racks: true, plates: true } } },
     });

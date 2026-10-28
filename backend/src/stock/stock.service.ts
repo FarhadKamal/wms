@@ -3,6 +3,7 @@ import { DocType, EventType, Prisma } from '../generated/prisma/client.js';
 import { fitCheck, ProductDims } from '../domain/fit.js';
 import { docNumber, RECEIVING_CODE, unitIdFor } from '../domain/layout.js';
 import { Candidate, bestQuantity, isValidVin, suggestLocations } from '../domain/putaway.js';
+import { Actor } from '../auth/permissions.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { Tx, nextSequence } from '../setup/layout-sync.js';
 import { DispatchDto, PutAwayDto, ReceiveDto, SuggestDto, TransferDto } from './stock.dto.js';
@@ -111,7 +112,7 @@ export class StockService {
   // ---------------------------------------------------------------- IN
 
   /** Goods unloaded into the Receiving Area: one challan for the whole delivery, one unit ID per item. */
-  async receive(whCode: string, dto: ReceiveDto) {
+  async receive(whCode: string, dto: ReceiveDto, actor: Actor) {
     const wh = await this.warehouse(whCode);
     const products = await this.prisma.product.findMany({ where: { sku: { in: dto.lines.map((l) => l.sku) } }, include: { category: true } });
     const seen = new Set<string>();
@@ -137,7 +138,7 @@ export class StockService {
       const rcv = await tx.location.findUniqueOrThrow({ where: { warehouseId_code: { warehouseId: wh.id, code: RECEIVING_CODE } } });
       const date = asDate(dto.date);
       const doc = await tx.document.create({
-        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'RCV', date), type: 'RCV', docDate: date, party: dto.party, reference: dto.reference ?? '', preparedBy: dto.preparedBy },
+        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'RCV', date), type: 'RCV', docDate: date, party: dto.party, reference: dto.reference ?? '', preparedBy: actor.fullName, preparedById: actor.id },
       });
       const rows: Array<{ uid: string; productId: string }> = [];
       for (const l of lines) {
@@ -151,7 +152,7 @@ export class StockService {
         data: rows.map((r) => ({ ...r, warehouseId: wh.id, status: 'STAGING' as const, locationId: rcv.id, receivingDocId: doc.id })),
         select: { id: true },
       });
-      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'RECEIVED' as const, toCode: RECEIVING_CODE, by: dto.preparedBy })) });
+      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'RECEIVED' as const, toCode: RECEIVING_CODE, by: actor.fullName, userId: actor.id })) });
       return doc.no;
     }, TX);
     return this.document(no);
@@ -188,7 +189,7 @@ export class StockService {
     };
   }
 
-  async putAway(whCode: string, dto: PutAwayDto) {
+  async putAway(whCode: string, dto: PutAwayDto, actor: Actor) {
     const wh = await this.warehouse(whCode);
     return this.prisma.$transaction(async (tx) => {
       const units = await this.lockUnits(tx, wh.id, dto.uids);
@@ -197,7 +198,7 @@ export class StockService {
       const loc = await this.resolveLocation(tx, wh.id, dto.location);
       const fit = await this.lockAndFit(tx, loc, units.map((u) => dims(u.product)));
       await tx.unit.updateMany({ where: { id: { in: units.map((u) => u.id) } }, data: { status: 'IN_STOCK', locationId: loc.id } });
-      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: u.receivingDocId, type: 'PUT_AWAY' as const, fromCode: RECEIVING_CODE, toCode: loc.address, by: dto.by })) });
+      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: u.receivingDocId, type: 'PUT_AWAY' as const, fromCode: RECEIVING_CODE, toCode: loc.address, by: actor.fullName, userId: actor.id })) });
       await this.markBoards(tx, wh.id, [loc.boardCode]);
       return { placed: units.length, location: loc.address, note: fit.ok ? fit.note : '' };
     }, TX);
@@ -205,7 +206,7 @@ export class StockService {
 
   // ---------------------------------------------------------------- MOVE
 
-  async transfer(whCode: string, dto: TransferDto) {
+  async transfer(whCode: string, dto: TransferDto, actor: Actor) {
     const wh = await this.warehouse(whCode);
     const no = await this.prisma.$transaction(async (tx) => {
       const units = await this.lockUnits(tx, wh.id, dto.uids);
@@ -217,10 +218,10 @@ export class StockService {
       await this.lockAndFit(tx, loc, moving.map((u) => dims(u.product)));
       const date = asDate();
       const doc = await tx.document.create({
-        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'TRF', date), type: 'TRF', docDate: date, party: 'Internal move', reference: dto.reason ?? '', preparedBy: dto.by, toCode: loc.address },
+        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'TRF', date), type: 'TRF', docDate: date, party: 'Internal move', reference: dto.reason ?? '', preparedBy: actor.fullName, preparedById: actor.id, toCode: loc.address },
       });
       await tx.unit.updateMany({ where: { id: { in: moving.map((u) => u.id) } }, data: { locationId: loc.id } });
-      await tx.movementEvent.createMany({ data: moving.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'MOVED' as const, fromCode: u.location?.address ?? null, toCode: loc.address, by: dto.by })) });
+      await tx.movementEvent.createMany({ data: moving.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'MOVED' as const, fromCode: u.location?.address ?? null, toCode: loc.address, by: actor.fullName, userId: actor.id })) });
       await this.markBoards(tx, wh.id, [loc.boardCode, ...moving.map((u) => u.location?.boardCode)]);
       return doc.no;
     }, TX);
@@ -230,7 +231,7 @@ export class StockService {
   // ---------------------------------------------------------------- OUT
 
   /** One challan per receiver: every scanned unit leaves on it. */
-  async dispatch(whCode: string, dto: DispatchDto) {
+  async dispatch(whCode: string, dto: DispatchDto, actor: Actor) {
     const wh = await this.warehouse(whCode);
     const no = await this.prisma.$transaction(async (tx) => {
       const units = await this.lockUnits(tx, wh.id, dto.uids);
@@ -238,10 +239,10 @@ export class StockService {
       if (gone.length) throw new ConflictException(`Already dispatched: ${gone.map((u) => u.uid).slice(0, 5).join(', ')}`);
       const date = asDate(dto.date);
       const doc = await tx.document.create({
-        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'DSP', date), type: 'DSP', docDate: date, party: dto.party, reference: dto.destination ?? '', preparedBy: dto.preparedBy },
+        data: { warehouseId: wh.id, no: await this.newDocNo(tx, wh.code, 'DSP', date), type: 'DSP', docDate: date, party: dto.party, reference: dto.destination ?? '', preparedBy: actor.fullName, preparedById: actor.id },
       });
       await tx.unit.updateMany({ where: { id: { in: units.map((u) => u.id) } }, data: { status: 'DISPATCHED', locationId: null, dispatchDocId: doc.id } });
-      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'DISPATCHED' as const, fromCode: u.location?.address ?? null, by: dto.preparedBy })) });
+      await tx.movementEvent.createMany({ data: units.map((u) => ({ unitId: u.id, documentId: doc.id, type: 'DISPATCHED' as const, fromCode: u.location?.address ?? null, by: actor.fullName, userId: actor.id })) });
       await this.markBoards(tx, wh.id, units.map((u) => u.location?.boardCode));
       return doc.no;
     }, TX);

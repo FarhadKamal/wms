@@ -1,25 +1,19 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import request from 'supertest';
-import { AppModule } from '../src/app.module.js';
+import { INestApplication } from '@nestjs/common';
+import { TEST_ADMIN_PASSWORD, bootApp, client, login } from './helpers.js';
 
 // Stock movement on the TEST database (reset + seeded with Chittagong, no stock) — see global-setup.ts.
 describe('Stock movement API (e2e)', () => {
   let app: INestApplication;
-  let api: () => ReturnType<typeof request>;
+  let api: () => ReturnType<typeof client>;
   const year = new Date(Date.now() + 6 * 3600_000).getUTCFullYear();
   const M = 'Warehouse Manager';
   let rcv: { no: string; lines: Array<{ sku: string; uids: string[] }> };
   const uidsOf = (sku: string) => rcv.lines.find((l) => l.sku === sku)!.uids;
 
   beforeAll(async () => {
-    expect(process.env.DATABASE_URL).toMatch(/_test\?/);
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await app.init();
-    api = () => request(app.getHttpServer());
+    app = await bootApp();
+    const token = await login(app, 'admin', TEST_ADMIN_PASSWORD);
+    api = () => client(app, token);
   });
   afterAll(() => app.close());
 
@@ -35,7 +29,9 @@ describe('Stock movement API (e2e)', () => {
     expect(rcv.no).toBe(`RCV-CTG-${year}-0001`);
     expect(res.body.units).toBe(27);
     expect(uidsOf('PDR-PQM60')).toHaveLength(10);
-    expect(uidsOf('PDR-PQM60')[0]).toBe('PDR-PQM60-0001');
+    // Unit serials are global across warehouses (other test files may have used some), so check format + sequence.
+    const serials = uidsOf('PDR-PQM60').map((u) => Number(u.match(/^PDR-PQM60-(\d{4})$/)![1]));
+    expect(serials).toEqual(serials.map((_, i) => serials[0] + i));
     expect(uidsOf('SUB-XV16')).toEqual(['JF1GTAA61RH900001', 'JF1GTAA61RH900002']);
   });
 

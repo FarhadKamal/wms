@@ -85,13 +85,35 @@ export class ApiError extends Error {
   constructor(message: string, status: number) { super(message); this.status = status; }
 }
 
+// ---------------------------------------------------------------- login session
+
+export type Role = 'ADMIN' | 'MANAGER' | 'STORE_KEEPER' | 'MANAGEMENT';
+export type Company = 'AZNEO' | 'PNL';
+export const ROLE_LABEL: Record<Role, string> = { ADMIN: 'Admin', MANAGER: 'Warehouse Manager', STORE_KEEPER: 'Store Keeper', MANAGEMENT: 'Management' };
+export const COMPANY_LABEL: Record<Company, string> = { AZNEO: 'Azneo', PNL: 'PNL Holdings' };
+export interface Me { id: string; username: string; fullName: string; role: Role; company: Company; warehouses: Array<{ code: string; name: string }> }
+export interface UserRow extends Me { active: boolean; lastLoginAt: string | null; createdAt: string }
+
+const TOKEN_KEY = 'wms.token';
+export const session = {
+  get: () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } },
+  set: (t: string) => { try { localStorage.setItem(TOKEN_KEY, t); } catch { /* private mode: session lasts this tab */ } },
+  clear: () => { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
+};
+/** Fired when the server says the login is no longer valid (expired, deactivated). */
+export const LOGGED_OUT_EVENT = 'wms:logged-out';
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const token = session.get();
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => null);
+  if (res.status === 401 && path !== '/auth/login') {
+    session.clear();
+    window.dispatchEvent(new CustomEvent(LOGGED_OUT_EVENT, { detail: data?.message }));
+  }
   if (!res.ok) {
     const msg = data?.message;
     throw new ApiError(Array.isArray(msg) ? msg.join('; ') : msg ?? `${res.status} ${res.statusText}`, res.status);
@@ -103,6 +125,12 @@ const q = (o: Record<string, string>) => new URLSearchParams(o).toString();
 
 export const api = {
   health: () => call<{ api: string; database: string }>('GET', '/health'),
+  login: (username: string, password: string) => call<{ token: string; user: Me }>('POST', '/auth/login', { username, password }),
+  me: () => call<Me>('GET', '/auth/me'),
+  changePassword: (current: string, next: string) => call('POST', '/auth/password', { current, next }),
+  users: () => call<UserRow[]>('GET', '/users'),
+  createUser: (b: { username: string; fullName: string; role: Role; company: Company; warehouses: string[] }) => call<{ id: string; username: string; password?: string }>('POST', '/users', b),
+  updateUser: (id: string, b: Partial<{ fullName: string; role: Role; company: Company; warehouses: string[]; active: boolean; resetPassword: boolean }>) => call<{ id: string; password?: string }>('PATCH', `/users/${id}`, b),
   warehouses: () => call<WarehouseRow[]>('GET', '/warehouses'),
   createWarehouse: (b: { code: string; name: string; address: string; areaSqft: number }) => call('POST', '/warehouses', b),
   updateWarehouse: (wh: string, b: Partial<{ name: string; address: string; landmark: string; areaSqft: number; status: 'ACTIVE' | 'PLANNED' }>) => call('PATCH', `/warehouses/${wh}`, b),
@@ -130,12 +158,12 @@ export const api = {
   deletePlate: (wh: string, label: string) => call('DELETE', `/warehouses/${wh}/plates/${label}`),
 
   products: () => call<Product[]>('GET', '/products'),
-  receive: (wh: string, b: { party: string; reference?: string; date?: string; preparedBy: string; lines: Array<{ sku: string; qty: number; vins?: string[] }> }) => call<Doc>('POST', `/warehouses/${wh}/receipts`, b),
+  receive: (wh: string, b: { party: string; reference?: string; date?: string; lines: Array<{ sku: string; qty: number; vins?: string[] }> }) => call<Doc>('POST', `/warehouses/${wh}/receipts`, b),
   pending: (wh: string) => call<PendingGroup[]>('GET', `/warehouses/${wh}/putaway`),
   suggest: (wh: string, uids: string[], exclude?: string) => call<{ suggestions: Suggestion[]; bestQty: number | null }>('POST', `/warehouses/${wh}/suggest`, { uids, exclude }),
-  putAway: (wh: string, b: { uids: string[]; location: string; by: string }) => call<{ placed: number; location: string; note: string }>('POST', `/warehouses/${wh}/putaway`, b),
-  transfer: (wh: string, b: { uids: string[]; location: string; by: string; reason?: string }) => call<Doc>('POST', `/warehouses/${wh}/transfers`, b),
-  dispatch: (wh: string, b: { party: string; destination?: string; date?: string; preparedBy: string; uids: string[] }) => call<Doc>('POST', `/warehouses/${wh}/dispatches`, b),
+  putAway: (wh: string, b: { uids: string[]; location: string }) => call<{ placed: number; location: string; note: string }>('POST', `/warehouses/${wh}/putaway`, b),
+  transfer: (wh: string, b: { uids: string[]; location: string; reason?: string }) => call<Doc>('POST', `/warehouses/${wh}/transfers`, b),
+  dispatch: (wh: string, b: { party: string; destination?: string; date?: string; uids: string[] }) => call<Doc>('POST', `/warehouses/${wh}/dispatches`, b),
   dashboard: (wh: string) => call<Dashboard>('GET', `/warehouses/${wh}/dashboard`),
   stock: (wh: string) => call<StockRow[]>('GET', `/warehouses/${wh}/stock`),
   stockOf: (wh: string, sku: string) => call<Array<{ address: string; kind: string; boardCode: string | null; uids: string[] }>>('GET', `/warehouses/${wh}/stock/${encodeURIComponent(sku)}`),

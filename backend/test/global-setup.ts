@@ -8,7 +8,8 @@ export default function setup() {
   const dbName = new URL(url).pathname.slice(1);
   if (!dbName.endsWith('_test')) throw new Error(`Refusing to reset "${dbName}": the test database name must end in _test`);
 
-  const env = { ...process.env, DATABASE_URL: url };
+  // Known admin password for the tests (see helpers.ts). Only used on the _test database.
+  const env = { ...process.env, DATABASE_URL: url, INITIAL_ADMIN_PASSWORD: 'TestAdmin2026' };
   execSync('npx prisma migrate reset --force', { env, stdio: 'pipe' });
   execSync('npx prisma db seed', { env, stdio: 'pipe' });
   process.env.DATABASE_URL = url;

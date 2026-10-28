@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from '../auth/auth.decorators.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** GET /api/health — is the API up, and can it reach PostgreSQL? */
-  @Get()
+  /** GET /api/health — is the API up, and can it reach PostgreSQL? (no login needed) */
+  @Public() @Get()
   async check() {
     try {
       const [row] = await this.prisma.$queryRaw<Array<{ db: string; version: string }>>`

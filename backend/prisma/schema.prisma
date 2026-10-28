@@ -61,6 +61,19 @@ enum DocType {
   TRF // Transfer Slip (internal move)
 }
 
+/// What a user may do. Store keepers and managers only work in their assigned warehouses.
+enum Role {
+  ADMIN // everything, all warehouses, manages users
+  MANAGER // stock movement + warehouse setup, assigned warehouses
+  STORE_KEEPER // receive, put-away, move, dispatch, assigned warehouses
+  MANAGEMENT // read-only dashboards and reports, all warehouses
+}
+
+enum Company {
+  AZNEO
+  PNL
+}
+
 enum EventType {
   RECEIVED
   PUT_AWAY
@@ -88,6 +101,7 @@ model Warehouse {
   boards    BayBoard[]
   units     Unit[]
   documents Document[]
+  users     UserWarehouse[]
 
   @@map("warehouses")
 }
@@ -335,18 +349,20 @@ model Unit {
 
 /// Receiving / Dispatch Challan or Transfer Slip. No product moves without one.
 model Document {
-  id          String   @id @default(uuid()) @db.Uuid
-  warehouseId String   @db.Uuid
-  no          String   @unique // "RCV-CTG-2026-0001"
-  type        DocType
-  docDate     DateTime @db.Date
-  party       String // supplier / receiver / "Internal move"
-  reference   String   @default("") // supplier ref / destination / reason
-  preparedBy  String
-  toCode      String? // transfers: destination address (snapshot)
-  createdAt   DateTime @default(now())
+  id           String   @id @default(uuid()) @db.Uuid
+  warehouseId  String   @db.Uuid
+  no           String   @unique // "RCV-CTG-2026-0001"
+  type         DocType
+  docDate      DateTime @db.Date
+  party        String // supplier / receiver / "Internal move"
+  reference    String   @default("") // supplier ref / destination / reason
+  preparedBy   String // name snapshot of the user who made it
+  preparedById String?  @db.Uuid
+  toCode       String? // transfers: destination address (snapshot)
+  createdAt    DateTime @default(now())
 
   warehouse  Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  preparer   User?           @relation(fields: [preparedById], references: [id], onDelete: Restrict)
   received   Unit[]          @relation("ReceivedOn")
   dispatched Unit[]          @relation("DispatchedOn")
   events     MovementEvent[]
@@ -363,14 +379,50 @@ model MovementEvent {
   type       EventType
   fromCode   String?
   toCode     String?
-  by         String
+  by         String // name snapshot
+  userId     String?   @db.Uuid
   at         DateTime  @default(now())
 
   unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Restrict)
   document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([unitId, at])
   @@map("movement_events")
+}
+
+// ---------------------------------------------------------------- users
+
+/// A person who logs in. Deactivate instead of deleting, so history keeps pointing at them.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  username     String    @unique
+  fullName     String
+  passwordHash String
+  role         Role
+  company      Company   @default(AZNEO)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  warehouses UserWarehouse[]
+  documents  Document[]
+  events     MovementEvent[]
+
+  @@map("users")
+}
+
+/// Which warehouses a Manager / Store Keeper works in (Admin and Management see all).
+model UserWarehouse {
+  userId      String @db.Uuid
+  warehouseId String @db.Uuid
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, warehouseId])
+  @@map("user_warehouses")
 }
 
 /// Atomic counters (incremented with UPDATE … RETURNING inside the same transaction):

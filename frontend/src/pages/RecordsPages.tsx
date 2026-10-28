@@ -194,7 +194,7 @@ export function ChallansPage() {
 // ---------------------------------------------------------------- Bay boards
 
 export function BoardsPage() {
-  const { wh, version, run, print } = useWms();
+  const { wh, version, run, print, can } = useWms();
   const [boards, setBoards] = useState<BoardRow[]>([]);
   const [floor, setFloor] = useState(false);
   const [pos, setPos] = useState<string | null>(null);
@@ -209,7 +209,7 @@ export function BoardsPage() {
         <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={floor} onChange={(e) => setFloor(e.target.checked)} /> Include floor cells &amp; floor plates</label>
         <span className="spacer" />
         <button className="btn btn-sm" disabled={!shown.length} onClick={() => print(<>{shown.map(card)}</>)}>Print all changed cards</button>
-        <button className="btn btn-sm btn-primary" disabled={!boards.length} onClick={() => run(() => api.boardUpdated(wh, '*'), (r) => `${r.updated} boards marked as updated.`)}>Mark all as updated</button>
+        {can.moveStock && <button className="btn btn-sm btn-primary" disabled={!boards.length} onClick={() => run(() => api.boardUpdated(wh, '*'), (r) => `${r.updated} boards marked as updated.`)}>Mark all as updated</button>}
       </div>
       {shown.length ? (
         <div className="two-col">
@@ -219,7 +219,7 @@ export function BoardsPage() {
               {card(b)}
               <div className="row">
                 <button className="btn btn-sm btn-primary" onClick={() => print(card(b))}>Print card</button>
-                <button className="btn btn-sm" onClick={() => run(() => api.boardUpdated(wh, b.code), `Board ${b.code} marked as updated.`)}>Mark updated</button>
+                {can.moveStock && <button className="btn btn-sm" onClick={() => run(() => api.boardUpdated(wh, b.code), `Board ${b.code} marked as updated.`)}>Mark updated</button>}
                 <button className="btn btn-sm btn-ghost" onClick={() => setPos(b.code)}>Details</button>
               </div>
             </div>

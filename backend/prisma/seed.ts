@@ -10,6 +10,7 @@ import { CellUse, PrismaClient } from '../src/generated/prisma/client.js';
 import { autoLengthCells } from '../src/domain/geometry.js';
 import { plateLabel } from '../src/domain/layout.js';
 import { loadStructure, nextSequence, syncLayout } from '../src/setup/layout-sync.js';
+import { generatePassword, hashPassword, passwordProblem } from '../src/auth/password.js';
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 
@@ -83,6 +84,16 @@ async function main() {
   for (const w of WAREHOUSES) {
     await prisma.warehouse.upsert({ where: { code: w.code }, update: {}, create: w });
     await prisma.$transaction(async (tx) => syncLayout(tx, await loadStructure(tx, w.code)), { timeout: 60_000 });
+  }
+
+  // First Admin — only when there are no users at all. The Admin then creates everyone else in the app.
+  if ((await prisma.user.count()) === 0) {
+    const given = process.env.INITIAL_ADMIN_PASSWORD?.trim();
+    const password = given || generatePassword();
+    const problem = passwordProblem(password);
+    if (problem) throw new Error(`INITIAL_ADMIN_PASSWORD: ${problem}`);
+    await prisma.user.create({ data: { username: 'admin', fullName: 'System Admin', role: 'ADMIN', company: 'AZNEO', passwordHash: await hashPassword(password) } });
+    console.log(given ? 'Admin account created (username: admin).' : `Admin account created — username: admin  password: ${password}  (shown once; change it after logging in)`);
   }
 
   const ctg = await prisma.warehouse.findUniqueOrThrow({ where: { code: 'CTG' }, include: { _count: { select: { blocks: true } } } });

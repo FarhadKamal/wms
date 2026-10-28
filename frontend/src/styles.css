@@ -50,6 +50,15 @@ button { font-family: inherit; }
 .nav-badge { margin-left: auto; font-size: 10.5px; font-weight: 700; background: rgba(246,244,239,0.18); padding: 1px 7px; border-radius: 100px; }
 .nav-badge.red { background: var(--critical); color: #fff; }
 .kpi.warn .v { color: var(--warning); }
+
+/* Login & user menu */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--bg); }
+.login-card { width: 100%; max-width: 380px; padding: 28px; }
+.user-menu { position: relative; }
+.user-btn { display: flex; align-items: center; gap: 10px; background: none; border: 1px solid transparent; border-radius: 9px; padding: 4px 8px; cursor: pointer; color: var(--ink); font: inherit; font-size: 12.5px; }
+.user-btn:hover { border-color: var(--border-strong); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none; }
+.user-pop { position: absolute; right: 0; top: calc(100% + 6px); background: var(--primary); border-radius: 10px; padding: 6px; min-width: 190px; box-shadow: var(--shadow); z-index: 30; }
 .sidebar-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid rgba(246,244,239,0.16); font-size: 11px; color: rgba(246,244,239,0.6); line-height: 1.5; }
 .main { min-width: 0; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 28px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 5; }

@@ -8,7 +8,7 @@ interface Line { sku: string; qty: number; vins: string }
 
 /** Goods are unloaded into the Receiving Area first; this records them on one challan with a QR label per unit. */
 export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
-  const { products, wh, user, setUser, run } = useWms();
+  const { products, wh, me, run } = useWms();
   const [party, setParty] = useState('');
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(todayLocal());
@@ -21,7 +21,7 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
 
   const submit = async () => {
     const r = await run(() => api.receive(wh, {
-      party, reference, date, preparedBy: user,
+      party, reference, date,
       lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, ...(productOf(l.sku)?.category.idRule === 'VIN' ? { vins: l.vins.split(/\s+/).filter(Boolean) } : {}) })),
     }), (d) => `${d.units} units received into the Receiving Area on ${d.no}.`);
     if (r) { setDoc(r); setLines([{ sku: '', qty: 1, vins: '' }]); setReference(''); }
@@ -36,7 +36,7 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
           <label className="field">Supplier <input value={party} placeholder="e.g. Pedrollo S.p.A." onChange={(e) => setParty(e.target.value)} /></label>
           <label className="field">Supplier's delivery ref. <span className="hint">their invoice / B/L / delivery note</span><input value={reference} onChange={(e) => setReference(e.target.value)} /></label>
           <label className="field">Received date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-          <label className="field">Received by <input value={user} onChange={(e) => setUser(e.target.value)} /></label>
+          <label className="field">Received by <span className="hint">from your login</span><input value={me.fullName} readOnly /></label>
         </div>
         <div className="section-title" style={{ marginTop: 20 }}>Products in this delivery</div>
         {lines.map((l, i) => {
@@ -62,7 +62,7 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
         })}
         <button className="btn btn-sm" onClick={() => setLines([...lines, { sku: '', qty: 1, vins: '' }])}>+ Add product</button>
         <div className="form-actions">
-          <button className="btn btn-primary" disabled={!party.trim() || !user.trim() || lines.some((l) => !l.sku || !(l.qty > 0))} onClick={submit}>Confirm receipt &amp; generate challan</button>
+          <button className="btn btn-primary" disabled={!party.trim() || lines.some((l) => !l.sku || !(l.qty > 0))} onClick={submit}>Confirm receipt &amp; generate challan</button>
           <span className="note">{lines.length} product line{lines.length === 1 ? '' : 's'} · {total} units → 1 challan, {total} QR labels</span>
         </div>
       </div>

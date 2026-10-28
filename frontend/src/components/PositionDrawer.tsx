@@ -10,7 +10,7 @@ const EV = { RECEIVED: 'received', PUT_AWAY: 'put away', MOVED: 'moved', DISPATC
 
 /** The bay dashboard: what is in a rack position / floor cell, its weight, plates, board status and history. */
 export function PositionView({ code }: { code: string }) {
-  const { wh, version, print, run } = useWms();
+  const { wh, version, print, run, can } = useWms();
   const [p, setP] = useState<Position | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -77,7 +77,7 @@ export function PositionView({ code }: { code: string }) {
       )}
       <div className="row">
         <button className="btn btn-sm btn-primary" onClick={() => print(<BayCard wh={wh} code={board} pos={p} />)}>Print bay card</button>
-        {p.boardDirty && <button className="btn btn-sm" onClick={() => run(() => api.boardUpdated(wh, board), `Board ${board} marked as updated.`)}>Mark board updated</button>}
+        {p.boardDirty && can.moveStock && <button className="btn btn-sm" onClick={() => run(() => api.boardUpdated(wh, board), `Board ${board} marked as updated.`)}>Mark board updated</button>}
         <button className="btn btn-sm" onClick={() => print(<LocationLabel wh={wh} code={board} sub={p.description} />)}>Print location QR label</button>
       </div>
     </div>

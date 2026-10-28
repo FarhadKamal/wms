@@ -16,7 +16,6 @@ export class ReceiveDto {
   @IsString() @Length(1, 120) party: string;
   @IsOptional() @IsString() @Length(0, 120) reference?: string;
   @IsOptional() @Matches(DATE) date?: string;
-  @IsString() @Length(1, 80) preparedBy: string;
   @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => ReceiveLineDto) lines: ReceiveLineDto[];
 }
 
@@ -29,10 +28,11 @@ export class SuggestDto extends UnitsDto {
   @IsOptional() @IsString() exclude?: string;
 }
 
+// Who did it is never sent by the client: it comes from the login.
+
 export class PutAwayDto extends UnitsDto {
   /** Location code, address or plate label. */
   @IsString() location: string;
-  @IsString() @Length(1, 80) by: string;
 }
 
 export class TransferDto extends PutAwayDto {
@@ -43,5 +43,4 @@ export class DispatchDto extends UnitsDto {
   @IsString() @Length(1, 120) party: string;
   @IsOptional() @IsString() @Length(0, 200) destination?: string;
   @IsOptional() @Matches(DATE) date?: string;
-  @IsString() @Length(1, 80) preparedBy: string;
 }

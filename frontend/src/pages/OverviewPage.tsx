@@ -8,7 +8,7 @@ import { DocRows, useDocViewer } from './RecordsPages';
 export type Go = (page: 'layout' | 'setup' | 'receive' | 'putaway' | 'dispatch' | 'boards' | 'stock' | 'challans') => void;
 
 export function OverviewPage({ go }: { go: Go }) {
-  const { structure: s, wh, version } = useWms();
+  const { structure: s, wh, version, can } = useWms();
   const [d, setD] = useState<Dashboard | null>(null);
   const viewer = useDocViewer();
   useEffect(() => { api.dashboard(wh).then(setD).catch(() => setD(null)); }, [wh, version]);
@@ -59,12 +59,14 @@ export function OverviewPage({ go }: { go: Go }) {
         {tile('Bay boards to update', d?.boardsToUpdate ?? '–', 'stock changed', 'boards', d?.boardsToUpdate ? 'warn' : '')}
       </div>
 
-      <div className="flow">
-        <button className="flow-step" onClick={() => go('receive')}><div className="n">01</div><div className="t">Unload</div><div className="d">Goods land in the Receiving Area</div></button>
-        <button className="flow-step" onClick={() => go('receive')}><div className="n">02</div><div className="t">Receive</div><div className="d">Challan + one QR label per unit</div></button>
-        <button className="flow-step" onClick={() => go('putaway')}><div className="n">03</div><div className="t">Put-away</div><div className="d">Scan unit → scan shelf / bay / plate</div></button>
-        <button className="flow-step" onClick={() => go('dispatch')}><div className="n">04</div><div className="t">Dispatch</div><div className="d">Receiver → scan units → challan</div></button>
-      </div>
+      {can.moveStock && (
+        <div className="flow">
+          <button className="flow-step" onClick={() => go('receive')}><div className="n">01</div><div className="t">Unload</div><div className="d">Goods land in the Receiving Area</div></button>
+          <button className="flow-step" onClick={() => go('receive')}><div className="n">02</div><div className="t">Receive</div><div className="d">Challan + one QR label per unit</div></button>
+          <button className="flow-step" onClick={() => go('putaway')}><div className="n">03</div><div className="t">Put-away</div><div className="d">Scan unit → scan shelf / bay / plate</div></button>
+          <button className="flow-step" onClick={() => go('dispatch')}><div className="n">04</div><div className="t">Dispatch</div><div className="d">Receiver → scan units → challan</div></button>
+        </div>
+      )}
 
       <div className="two-col">
         <div className="card pad"><div className="section-title">Latest documents</div><DocRows docs={d?.latestDocs ?? []} onOpen={viewer.open} /></div>

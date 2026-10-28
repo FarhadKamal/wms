@@ -6,7 +6,7 @@ import { RackDrawer } from '../components/RackDrawer';
 import { useWms } from '../wms';
 
 export function LayoutPage({ onConfigureRack }: { onConfigureRack: (block: string, rack: string) => void }) {
-  const { structure: s } = useWms();
+  const { structure: s, can } = useWms();
   const [blockCode, setBlockCode] = useState('');
   const [rackCode, setRackCode] = useState<string | null>(null);
   const [pos, setPos] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function LayoutPage({ onConfigureRack }: { onConfigureRack: (block: strin
         </p>
       </div>
       {rack && !pos && <RackDrawer rack={rack} plates={s.plates} onClose={() => setRackCode(null)} onPosition={setPos}
-        onConfigure={() => onConfigureRack(rack.blockCode, rack.code)} />}
+        onConfigure={can.setup ? () => onConfigureRack(rack.blockCode, rack.code) : undefined} />}
       {pos && <PositionDrawer code={pos} onClose={() => setPos(null)} />}
     </>
   );

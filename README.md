@@ -35,6 +35,23 @@ Tests: `npm test` (business rules, no DB) · `npm run test:e2e` (API — **wipes
 | 5 Racks | `GET …/racks/suggest`, `POST …/racks`, `PATCH/DELETE …/racks/:rack` |
 | 6 Plates | `GET …/plates/suggest-floor`, `POST …/plates`, `DELETE …/plates/:label` |
 
+### Logins and roles (module 3)
+
+Every request needs a login token (`POST /api/auth/login`), except `GET /api/health`. Roles — kept simple, no approval workflows:
+
+| Role | Can do | Warehouses |
+|---|---|---|
+| Admin | everything, manages users | all |
+| Warehouse Manager | stock movement + warehouse setup | assigned only |
+| Store Keeper | receive, put-away, move, dispatch, bay boards | assigned only |
+| Management | view dashboards, stock, challans (read-only) | all |
+
+- The server enforces it (`src/auth/auth.guard.ts`): changes need an explicit `@Allow(...)` (deny by default), `:wh` routes check the
+  user's warehouses, and the user is reloaded on every request so deactivation or a role change applies at once.
+- "Received by / dispatched by" comes from the login (name + user id on every document and history entry), never from the client.
+- Passwords: scrypt-hashed; 5 failed logins lock that username for 15 minutes; tokens last 12 hours (`JWT_SECRET` in `.env`).
+- First Admin: `npx prisma db seed` creates `admin` when there are no users (password from `INITIAL_ADMIN_PASSWORD`, or generated and printed once). The Admin creates everyone else under **Users**.
+
 ### Stock movement API (module 2)
 
 | Flow | Endpoints |

@@ -4,7 +4,7 @@ import { sqft, suggestCode } from '../../autofill';
 import { useWms } from '../../wms';
 
 export function WarehouseStep({ onCreated }: { onCreated: () => void }) {
-  const { structure: s, warehouses, wh, setWh, run } = useWms();
+  const { structure: s, warehouses, wh, setWh, run, can } = useWms();
   const [form, setForm] = useState({ name: '', address: '', landmark: '', areaSqft: 0, status: 'ACTIVE' as 'ACTIVE' | 'PLANNED' });
   const [nw, setNw] = useState({ code: '', name: '', address: '', areaSqft: '' });
   const [codeTouched, setCodeTouched] = useState(false);
@@ -56,7 +56,7 @@ export function WarehouseStep({ onCreated }: { onCreated: () => void }) {
             </div>
           ))}
         </div>
-        <div className="card pad">
+        {can.createWarehouse && <div className="card pad">
           <div className="section-title">Create a new warehouse</div>
           <div className="form-grid">
             <label className="field">Name <input value={nw.name} placeholder="e.g. Khulna" onChange={(e) => setNw({ ...nw, name: e.target.value, code: codeTouched ? nw.code : suggestCode(e.target.value, warehouses.map((w) => w.code)) })} /></label>
@@ -70,7 +70,7 @@ export function WarehouseStep({ onCreated }: { onCreated: () => void }) {
             <button className="btn btn-primary" disabled={!nw.name || !nw.code || !nw.address || !Number(nw.areaSqft)} onClick={create}>Create warehouse</button>
             <span className="note">Next: add its blocks.</span>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
