@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
-import type { BoardRow, Doc, DocRow, DocType, StockRow, UnitDetail } from '../api';
+import type { BoardRow, Doc, DocRow, DocType, Product, StockRow, UnitDetail } from '../api';
 import { BayCard, DocModal } from '../components/Docs';
 import { PositionDrawer, PositionView } from '../components/PositionDrawer';
 import { QR, unitQR } from '../components/QR';
@@ -42,12 +42,12 @@ export function StockPage() {
   useEffect(() => { api.stock(wh).then(setRows).catch(() => setRows([])); }, [wh, version]);
   useEffect(() => { if (open) api.stockOf(wh, open.sku).then(setWhere).catch(() => setWhere([])); }, [open, wh, version]);
   const cats = [...new Set(rows.map((r) => r.category))];
-  const shown = rows.filter((r) => (cat === 'all' || r.category === cat) && (!q || `${r.name} ${r.sku} ${r.brand}`.toLowerCase().includes(q.toLowerCase())));
+  const shown = rows.filter((r) => (cat === 'all' || r.category === cat) && (!q || `${r.name} ${r.sku} ${r.brand} ${r.aliases.join(' ')}`.toLowerCase().includes(q.toLowerCase())));
 
   return (
     <>
       <div className="row" style={{ marginBottom: 14 }}>
-        <input placeholder="Search product, SKU or brand…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} />
+        <input placeholder="Search product, SKU, brand or alias code…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} />
         <button className={`filter-chip${cat === 'all' ? ' active' : ''}`} onClick={() => setCat('all')}>All</button>
         {cats.map((c) => <button key={c} className={`filter-chip${cat === c ? ' active' : ''}`} onClick={() => setCat(c)}>{c}</button>)}
       </div>
@@ -133,26 +133,61 @@ function UnitCard({ u }: { u: UnitDetail }) {
   );
 }
 
+/** A product found by SKU or alias code: its details and where its stock is in this warehouse. */
+function ProductCard({ p }: { p: Product }) {
+  const { wh, version } = useWms();
+  const [where, setWhere] = useState<Array<{ address: string; kind: string; boardCode: string | null; uids: string[] }>>([]);
+  const [pos, setPos] = useState<string | null>(null);
+  useEffect(() => { api.stockOf(wh, p.sku).then(setWhere).catch(() => setWhere([])); }, [wh, p.sku, version]);
+  const total = where.reduce((s, w) => s + w.uids.length, 0);
+  return (
+    <div className="card pad stack">
+      <div>
+        <div className="crumb">{p.category.name} · {p.brand}</div>
+        <h2 style={{ fontSize: 18 }}>{p.name}</h2>
+        <div className="note mono" style={{ marginTop: 4 }}>SKU {p.sku}{p.aliases.some(Boolean) && <> · alias {p.aliases.filter(Boolean).join(', ')}</>}</div>
+      </div>
+      <div className="kpis" style={{ ['--cols' as string]: 3 }}>
+        <div className="kpi"><div className="k">In this warehouse</div><div className="v">{total}</div><div className="s">units</div></div>
+        <div className="kpi"><div className="k">Size</div><div className="v" style={{ fontSize: 15 }}>{p.lengthCm}×{p.widthCm}×{p.heightCm}</div><div className="s">cm per unit</div></div>
+        <div className="kpi"><div className="k">Weight</div><div className="v">{p.weightKg}</div><div className="s">kg per unit</div></div>
+      </div>
+      <div>
+        <div className="section-title">Where it is</div>
+        {where.length ? where.map((w) => (
+          <div key={w.address} className={`list-row${w.boardCode ? ' click' : ''}`} onClick={() => w.boardCode && setPos(w.boardCode)}>
+            <div className="row-main"><div className="t1"><span className={`code${w.kind === 'PLATE' ? ' plate' : ''}`}>{w.address}</span></div><div className="t2 mono">{w.uids.join(', ')}</div></div>
+            <div className="row-side"><b>{w.uids.length}</b> units</div>
+          </div>
+        )) : <div className="empty">None in stock here.</div>}
+      </div>
+      {pos && <PositionDrawer code={pos} onClose={() => setPos(null)} />}
+    </div>
+  );
+}
+
 export function LookupPage() {
   const { wh, toast } = useWms();
-  const [result, setResult] = useState<{ unit?: UnitDetail; board?: string } | null>(null);
+  const [result, setResult] = useState<{ unit?: UnitDetail; board?: string; product?: Product } | null>(null);
   const docs = useDocViewer();
   const lookup = async (raw: string) => {
     try {
       const s = await api.scan(wh, raw);
       if (s.type === 'unit') setResult({ unit: await api.unit(s.uid) });
       else if (s.type === 'location') setResult({ board: s.board });
+      else if (s.type === 'product') setResult({ product: await api.product(s.sku) });
       else { setResult(null); await docs.open(s.no); }
     } catch (e) { setResult(null); toast(e instanceof ApiError ? e.message : String(e), true); }
   };
   return (
     <div style={{ maxWidth: 860 }} className="stack">
       <div className="card pad">
-        <div className="section-title">Scan any QR — product unit, car VIN, location, plate or challan</div>
-        <ScanBox placeholder="e.g. PDR-PQM60-0012, A-RK2-S1-B3, PL-CTG-0004, DSP-CTG-2026-0001" onScan={lookup} autoFocus />
+        <div className="section-title">Scan or type any code — unit, car VIN, location, plate, challan, SKU or alias code</div>
+        <ScanBox placeholder="e.g. PDR-PQM60-0012, A-RK2-S1-B3, PL-CTG-0004, DSP-CTG-2026-0001, ERP-1001" onScan={lookup} autoFocus />
       </div>
       {result?.unit && <UnitCard u={result.unit} />}
       {result?.board && <div className="card pad"><PositionView code={result.board} /></div>}
+      {result?.product && <ProductCard p={result.product} />}
       {docs.modal}
     </div>
   );

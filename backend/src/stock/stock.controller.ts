@@ -19,8 +19,6 @@ const guardWarehouse = <T extends { warehouse: { code: string } }>(u: Actor, x: 
 export class StockController {
   constructor(private readonly stock: StockService) {}
 
-  @Get('products') products() { return this.stock.products(); }
-
   // IN
   @Post('warehouses/:wh/receipts') @Allow(...CAN.moveStock)
   receive(@Param('wh') wh: string, @Body() dto: ReceiveDto, @CurrentUser() u: Actor) { return this.stock.receive(wh, dto, u); }

@@ -22,6 +22,7 @@ export const CAN = {
   setup: ['ADMIN', 'MANAGER'],
   createWarehouse: ['ADMIN'],
   manageUsers: ['ADMIN'],
+  manageProducts: ['ADMIN'], // IT uploads the product Excel
 } as const satisfies Record<string, readonly Role[]>;
 
 export const seesAllWarehouses = (a: Pick<Actor, 'role'>) => a.role === 'ADMIN' || a.role === 'MANAGEMENT';

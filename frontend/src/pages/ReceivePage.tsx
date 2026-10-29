@@ -4,7 +4,8 @@ import type { Doc } from '../api';
 import { DocModal } from '../components/Docs';
 import { useWms } from '../wms';
 
-interface Line { sku: string; qty: number; vins: string }
+interface Line { sku: string; qty: number; vins: string; find: string }
+const EMPTY: Line = { sku: '', qty: 1, vins: '', find: '' };
 
 /** Goods are unloaded into the Receiving Area first; this records them on one challan with a QR label per unit. */
 export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
@@ -12,10 +13,20 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
   const [party, setParty] = useState('');
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(todayLocal());
-  const [lines, setLines] = useState<Line[]>([{ sku: '', qty: 1, vins: '' }]);
+  const [lines, setLines] = useState<Line[]>([EMPTY]);
   const [doc, setDoc] = useState<Doc | null>(null);
   const byCat = [...new Set(products.map((p) => p.category.name))];
   const productOf = (sku: string) => products.find((p) => p.sku === sku);
+  /** Matches by name, SKU, brand or any alias code (case-insensitive). */
+  const matches = (find: string) => {
+    const t = find.trim().toLowerCase();
+    return t ? products.filter((x) => [x.name, x.sku, x.brand, ...x.aliases].some((v) => v?.toLowerCase().includes(t))) : products;
+  };
+  /** An exact SKU or alias (typed or scanned) picks the product straight away. */
+  const exact = (find: string) => {
+    const t = find.trim().toUpperCase();
+    return products.find((x) => x.sku === t || x.aliases.includes(t));
+  };
   const setLine = (i: number, l: Partial<Line>) => setLines(lines.map((x, j) => (j === i ? { ...x, ...l } : x)));
   const total = lines.reduce((s, l) => s + (l.qty || 0), 0);
 
@@ -24,7 +35,7 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
       party, reference, date,
       lines: lines.map((l) => ({ sku: l.sku, qty: l.qty, ...(productOf(l.sku)?.category.idRule === 'VIN' ? { vins: l.vins.split(/\s+/).filter(Boolean) } : {}) })),
     }), (d) => `${d.units} units received into the Receiving Area on ${d.no}.`);
-    if (r) { setDoc(r); setLines([{ sku: '', qty: 1, vins: '' }]); setReference(''); }
+    if (r) { setDoc(r); setLines([EMPTY]); setReference(''); }
   };
 
   return (
@@ -44,13 +55,15 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
           return (
             <div key={i} className="line-row">
               <label className="field">Product
+                <input value={l.find} placeholder="Find by name, SKU or alias code (or scan)" aria-label="Find product"
+                  onChange={(e) => { const hit = exact(e.target.value); setLine(i, { find: e.target.value, ...(hit ? { sku: hit.sku, vins: '' } : {}) }); }} />
                 <select value={l.sku} onChange={(e) => setLine(i, { sku: e.target.value, vins: '' })}>
-                  <option value="">Choose a product…</option>
-                  {byCat.map((c) => <optgroup key={c} label={c}>{products.filter((x) => x.category.name === c).map((x) => <option key={x.sku} value={x.sku}>{x.name}</option>)}</optgroup>)}
+                  <option value="">{l.find ? `${matches(l.find).length} match${matches(l.find).length === 1 ? '' : 'es'} — choose…` : 'Choose a product…'}</option>
+                  {byCat.map((c) => { const opts = matches(l.find).filter((x) => x.category.name === c || x.sku === l.sku); return opts.length ? <optgroup key={c} label={c}>{opts.filter((x) => x.category.name === c).map((x) => <option key={x.sku} value={x.sku}>{x.name} · {x.sku}{x.aliases.some(Boolean) ? ` · ${x.aliases.filter(Boolean).join('/')}` : ''}</option>)}</optgroup> : null; })}
                 </select>
               </label>
               <label className="field">Qty <input type="number" min={1} value={l.qty} disabled={p?.category.idRule === 'VIN'} onChange={(e) => setLine(i, { qty: Number(e.target.value) })} /></label>
-              <button className="icon-btn" title="Remove line" aria-label="Remove line" onClick={() => setLines(lines.length > 1 ? lines.filter((_, j) => j !== i) : [{ sku: '', qty: 1, vins: '' }])}>×</button>
+              <button className="icon-btn" title="Remove line" aria-label="Remove line" onClick={() => setLines(lines.length > 1 ? lines.filter((_, j) => j !== i) : [EMPTY])}>×</button>
               {p?.category.idRule === 'VIN'
                 ? <label className="field vin-box">VINs — one per line <span className="hint">the quantity counts the VINs; each car gets a QR sticker carrying its VIN</span>
                     <textarea rows={3} value={l.vins} placeholder="17-character VIN per line"
@@ -60,7 +73,7 @@ export function ReceivePage({ goPutAway }: { goPutAway: () => void }) {
             </div>
           );
         })}
-        <button className="btn btn-sm" onClick={() => setLines([...lines, { sku: '', qty: 1, vins: '' }])}>+ Add product</button>
+        <button className="btn btn-sm" onClick={() => setLines([...lines, EMPTY])}>+ Add product</button>
         <div className="form-actions">
           <button className="btn btn-primary" disabled={!party.trim() || lines.some((l) => !l.sku || !(l.qty > 0))} onClick={submit}>Confirm receipt &amp; generate challan</button>
           <span className="note">{lines.length} product line{lines.length === 1 ? '' : 's'} · {total} units → 1 challan, {total} QR labels</span>

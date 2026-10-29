@@ -294,14 +294,14 @@ export class StockService {
   async stock(whCode: string) {
     const wh = await this.warehouse(whCode);
     const [products, units] = await Promise.all([
-      this.prisma.product.findMany({ orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }], include: { category: true } }),
+      this.prisma.product.findMany({ orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }], include: { category: true, aliases: { orderBy: { slot: 'asc' } } } }),
       this.prisma.unit.findMany({ where: { warehouseId: wh.id, status: { not: 'DISPATCHED' } }, select: { productId: true, status: true, locationId: true } }),
     ]);
     return products.map((p) => {
       const mine = units.filter((u) => u.productId === p.id);
       const onShelf = mine.filter((u) => u.status === 'IN_STOCK');
       return {
-        sku: p.sku, name: p.name, brand: p.brand, category: p.category.name, idRule: p.category.idRule,
+        sku: p.sku, name: p.name, brand: p.brand, category: p.category.name, idRule: p.category.idRule, aliases: p.aliases.map((a) => a.code),
         lengthCm: p.lengthCm, widthCm: p.widthCm, heightCm: p.heightCm, weightKg: p.weightKg, reorderPoint: p.reorderPoint,
         onShelf: onShelf.length, inReceiving: mine.length - onShelf.length, total: mine.length,
         locations: new Set(onShelf.map((u) => u.locationId)).size,
@@ -409,6 +409,8 @@ export class StockService {
     if (unit) return { type: 'unit' as const, uid: unit.uid, warehouse: unit.warehouse.code };
     const doc = await this.prisma.document.findUnique({ where: { no: v }, select: { no: true } });
     if (doc) return { type: 'document' as const, no: doc.no };
+    const product = await this.prisma.product.findFirst({ where: { OR: [{ sku: v }, { aliases: { some: { code: v } } }] }, select: { sku: true } });
+    if (product) return { type: 'product' as const, sku: product.sku };
     const loc = await this.prisma.location.findFirst({ where: { warehouseId: wh.id, OR: [{ code: v }, { address: v }, { boardCode: v }] } });
     if (loc) return { type: 'location' as const, board: loc.boardCode ?? loc.address, kind: loc.kind };
     throw new NotFoundException(`Nothing found for ${v} in ${wh.name}`);
@@ -457,7 +459,4 @@ export class StockService {
     };
   }
 
-  products() {
-    return this.prisma.product.findMany({ orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }], include: { category: true } });
-  }
 }

@@ -42,7 +42,12 @@ export interface Structure {
 export interface Product {
   id: string; sku: string; name: string; brand: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number;
   reorderPoint: number; stackable: boolean; category: { code: string; name: string; idRule: 'GENERATED' | 'VIN' };
+  /** alias code 1–3, each optional */
+  aliases: [string | null, string | null, string | null];
 }
+export interface ImportRow { row: number; sku: string; action: 'new' | 'update' | 'unchanged' | 'error'; errors: string[]; warnings: string[]; changes: string[] }
+export interface ImportPreview { rows: ImportRow[]; newCategories: string[]; summary: { total: number; new: number; update: number; unchanged: number; error: number } }
+export interface ProductForm { sku?: string; name: string; category: string; brand: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number; reorderPoint: number; alias1?: string; alias2?: string; alias3?: string }
 export type DocType = 'RCV' | 'DSP' | 'TRF';
 export interface DocLine { sku: string; name: string; byVin: boolean; uids: string[]; from: Record<string, number>; kg: number }
 export interface Doc {
@@ -57,7 +62,7 @@ export interface PendingGroup {
 export interface Suggestion { code: string; address: string; kind: string; note: string; sameProduct: boolean; empty: boolean }
 export interface StockRow {
   sku: string; name: string; brand: string; category: string; idRule: 'GENERATED' | 'VIN'; lengthCm: number; widthCm: number; heightCm: number; weightKg: number;
-  reorderPoint: number; onShelf: number; inReceiving: number; total: number; locations: number;
+  reorderPoint: number; onShelf: number; inReceiving: number; total: number; locations: number; aliases: string[];
 }
 export interface UnitDetail {
   uid: string; status: 'STAGING' | 'IN_STOCK' | 'DISPATCHED'; warehouse: { code: string; name: string };
@@ -78,7 +83,7 @@ export interface Dashboard {
   inStock: number; staging: number; receivedToday: number; dispatchedToday: number; boardsToUpdate: number;
   latestDocs: DocRow[]; lowStock: Array<{ sku: string; name: string; total: number; reorderPoint: number }>;
 }
-export type ScanResult = { type: 'unit'; uid: string; warehouse: string } | { type: 'document'; no: string } | { type: 'location'; board: string; kind: string };
+export type ScanResult = { type: 'unit'; uid: string; warehouse: string } | { type: 'document'; no: string } | { type: 'location'; board: string; kind: string } | { type: 'product'; sku: string };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -104,11 +109,31 @@ export const session = {
 export const LOGGED_OUT_EVENT = 'wms:logged-out';
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return send<T>(method, path, body !== undefined ? JSON.stringify(body) : undefined, body !== undefined ? { 'Content-Type': 'application/json' } : {});
+}
+
+/** Upload a file (multipart) — e.g. the product Excel. */
+function upload<T>(path: string, file: File): Promise<T> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return send<T>('POST', path, fd, {});
+}
+
+/** Download a file that needs the login (e.g. the product Excel export). */
+export async function download(path: string, filename: string) {
+  const res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${session.get() ?? ''}` } });
+  if (!res.ok) throw new ApiError(`Download failed (${res.status})`, res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function send<T>(method: string, path: string, body: BodyInit | undefined, extraHeaders: Record<string, string>): Promise<T> {
   const token = session.get();
-  const headers: Record<string, string> = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const headers: Record<string, string> = { ...extraHeaders };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  const res = await fetch(`/api${path}`, { method, headers, body });
   const data = await res.json().catch(() => null);
   if (res.status === 401 && path !== '/auth/login') {
     session.clear();
@@ -157,7 +182,12 @@ export const api = {
     call<{ labels: string[] }>('POST', `/warehouses/${wh}/plates`, b),
   deletePlate: (wh: string, label: string) => call('DELETE', `/warehouses/${wh}/plates/${label}`),
 
-  products: () => call<Product[]>('GET', '/products'),
+  products: (search?: string) => call<Product[]>('GET', `/products${search ? `?${q({ q: search })}` : ''}`),
+  product: (code: string) => call<Product>('GET', `/products/${encodeURIComponent(code)}`),
+  createProduct: (b: ProductForm) => call<Product>('POST', '/products', b),
+  updateProduct: (sku: string, b: ProductForm) => call<Product>('PATCH', `/products/${encodeURIComponent(sku)}`, b),
+  previewImport: (file: File) => upload<ImportPreview>('/products/import/preview', file),
+  importProducts: (file: File) => upload<ImportPreview['summary']>('/products/import', file),
   receive: (wh: string, b: { party: string; reference?: string; date?: string; lines: Array<{ sku: string; qty: number; vins?: string[] }> }) => call<Doc>('POST', `/warehouses/${wh}/receipts`, b),
   pending: (wh: string) => call<PendingGroup[]>('GET', `/warehouses/${wh}/putaway`),
   suggest: (wh: string, uids: string[], exclude?: string) => call<{ suggestions: Suggestion[]; bestQty: number | null }>('POST', `/warehouses/${wh}/suggest`, { uids, exclude }),

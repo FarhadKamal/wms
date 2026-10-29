@@ -302,22 +302,38 @@ model Category {
 }
 
 model Product {
-  id           String  @id @default(uuid()) @db.Uuid
-  sku          String  @unique
+  id           String   @id @default(uuid()) @db.Uuid
+  sku          String   @unique
   name         String
-  categoryId   String  @db.Uuid
+  categoryId   String   @db.Uuid
   brand        String
   lengthCm     Float
   widthCm      Float
   heightCm     Float
   weightKg     Float
-  reorderPoint Int     @default(0)
-  stackable    Boolean @default(true) // false for vehicles: they need floor area, not volume
+  reorderPoint Int      @default(0)
+  stackable    Boolean  @default(true) // false for vehicles: they need floor area, not volume
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   units    Unit[]
+  aliases  ProductAlias[]
 
   @@map("products")
+}
+
+/// Optional extra codes for a product (alias code 1–3), e.g. a supplier or ERP code.
+/// `code` is the primary key, so an alias can never point to two products.
+model ProductAlias {
+  code      String @id
+  productId String @db.Uuid
+  slot      Int // 1, 2 or 3
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, slot])
+  @@map("product_aliases")
 }
 
 // ---------------------------------------------------------------- stock & history

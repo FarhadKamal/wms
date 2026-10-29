@@ -13,6 +13,7 @@ export function permissions(role: Role) {
     setup: role === 'ADMIN' || role === 'MANAGER',
     createWarehouse: role === 'ADMIN',
     manageUsers: role === 'ADMIN',
+    manageProducts: role === 'ADMIN', // IT uploads the product Excel
   };
 }
 

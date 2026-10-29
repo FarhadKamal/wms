@@ -52,6 +52,17 @@ Every request needs a login token (`POST /api/auth/login`), except `GET /api/hea
 - Passwords: scrypt-hashed; 5 failed logins lock that username for 15 minutes; tokens last 12 hours (`JWT_SECRET` in `.env`).
 - First Admin: `npx prisma db seed` creates `admin` when there are no users (password from `INITIAL_ADMIN_PASSWORD`, or generated and printed once). The Admin creates everyone else under **Users**.
 
+### Products and Excel import (module 4)
+
+- `GET /api/products?q=` searches SKU, name, brand **and alias codes 1–3**; `GET /api/products/:code` finds by SKU or alias.
+  Scan & Lookup, the Stock page and the Receive product picker also match alias codes.
+- Admin only (IT): `GET /api/products/export` (current catalogue as .xlsx; `?empty=1` = template), `POST /api/products/import/preview`
+  (upload → row-by-row result, nothing saved), `POST /api/products/import` (all rows or none; refused while any row has an error),
+  `POST /api/products`, `PATCH /api/products/:sku`.
+- Rules (`src/domain/products.ts`): an existing SKU in the file **updates** that product; alias codes are optional, upper-cased,
+  unique across all products (enforced by the `product_aliases` table's primary key) and never equal to another SKU; one upload may
+  swap aliases between products; a new category name creates the category. Stock and history are never touched by an import.
+
 ### Stock movement API (module 2)
 
 | Flow | Endpoints |

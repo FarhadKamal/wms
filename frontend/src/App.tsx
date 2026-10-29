@@ -4,6 +4,7 @@ import { DispatchPage } from './pages/DispatchPage';
 import { LayoutPage } from './pages/LayoutPage';
 import { MovePage } from './pages/MovePage';
 import { OverviewPage } from './pages/OverviewPage';
+import { ProductsPage } from './pages/ProductsPage';
 import { PutAwayPage } from './pages/PutAwayPage';
 import { ReceivePage } from './pages/ReceivePage';
 import { BoardsPage, ChallansPage, LookupPage, StockPage } from './pages/RecordsPages';
@@ -11,19 +12,19 @@ import { SetupPage } from './pages/SetupPage';
 import { ChangePassword, UsersPage } from './pages/UsersPage';
 import { useWms, WmsProvider } from './wms';
 
-type Page = 'overview' | 'receive' | 'putaway' | 'move' | 'dispatch' | 'layout' | 'boards' | 'setup' | 'stock' | 'lookup' | 'challans' | 'users';
+type Page = 'overview' | 'receive' | 'putaway' | 'move' | 'dispatch' | 'layout' | 'boards' | 'setup' | 'stock' | 'lookup' | 'challans' | 'products' | 'users';
 const TITLES: Record<Page, [string, string]> = {
   overview: ['Overview', 'Dashboard'],
   receive: ['Stock movement', 'Receive (IN)'], putaway: ['Stock movement', 'Put-away'], move: ['Stock movement', 'Move between locations'], dispatch: ['Stock movement', 'Dispatch (OUT)'],
   layout: ['Warehouse', 'Layout & Racks'], boards: ['Warehouse', 'Bay Boards'], setup: ['Warehouse', 'Warehouse Setup'],
-  stock: ['Records', 'Stock'], lookup: ['Records', 'Scan & Lookup'], challans: ['Records', 'Challans'],
+  stock: ['Records', 'Stock'], lookup: ['Records', 'Scan & Lookup'], challans: ['Records', 'Challans'], products: ['Records', 'Products'],
   users: ['Administration', 'Users'],
 };
 const NAV: Array<[string, Array<[Page, string]>]> = [
   ['Overview', [['overview', '▣ Dashboard']]],
   ['Stock movement', [['receive', '↓ Receive (IN)'], ['putaway', '⇥ Put-away'], ['move', '⇄ Move'], ['dispatch', '↑ Dispatch (OUT)']]],
   ['Warehouse', [['layout', '⊞ Layout & Racks'], ['boards', '▤ Bay Boards'], ['setup', '⚙ Warehouse Setup']]],
-  ['Records', [['stock', '☰ Stock'], ['lookup', '⌕ Scan & Lookup'], ['challans', '▤ Challans']]],
+  ['Records', [['stock', '☰ Stock'], ['lookup', '⌕ Scan & Lookup'], ['challans', '▤ Challans'], ['products', '▦ Products']]],
   ['Administration', [['users', '👤 Users']]],
 ];
 const MOVEMENT: Page[] = ['receive', 'putaway', 'move', 'dispatch'];
@@ -106,6 +107,7 @@ function Shell() {
           {page === 'stock' && <StockPage />}
           {page === 'lookup' && <LookupPage />}
           {page === 'challans' && <ChallansPage />}
+          {page === 'products' && <ProductsPage />}
           {page === 'users' && <UsersPage />}
         </div>
       </div>
