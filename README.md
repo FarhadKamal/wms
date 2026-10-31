@@ -109,6 +109,10 @@ Layout & Racks `#/layout` · Bay Boards `#/boards` · Warehouse Setup `#/setup/<
 Scanning: the scan boxes accept a handheld scanner (it types the code and presses Enter) or typing. QR contents:
 units `AZWMS|U|<unit id>`, locations `AZWMS|L|<wh>|<code>`, documents `AZWMS|D|<no>`.
 
+## Live server
+
+Live on the company server, port 8101 (`E:\wms`, IIS site `azneo_wms` on 8101, service `azneo-wms-api` on 127.0.0.1:8102, updates with `deploy\update.ps1`): see [deploy/DEPLOY.md](deploy/DEPLOY.md).
+
 ## Notes
 
 - npm 10.9 on this machine hits an install bug; use `npx npm@11 install` if `npm install` fails with "edgesOut".
