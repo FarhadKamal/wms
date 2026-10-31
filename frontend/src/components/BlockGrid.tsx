@@ -81,7 +81,8 @@ export function BlockGrid({ block: b, racks, plates, floorCells, mode, selected,
 
   return (
     <div className="grid-wrap">
-      <div className="bgrid" style={{ gridTemplateColumns: `28px repeat(${b.cols}, minmax(${mode === 'design' ? 58 : 70}px, 1fr))`, gridTemplateRows: `20px repeat(${b.rows}, minmax(56px, auto))` }}>
+      {/* Cells are square on the floor (block area ÷ cells), so they are drawn square: same width and height. */}
+      <div className="bgrid" style={{ gridTemplateColumns: `28px repeat(${b.cols}, var(--cell))`, gridTemplateRows: `20px repeat(${b.rows}, var(--cell))` }}>
         <div className="hd" />
         {Array.from({ length: b.cols }, (_, i) => <div key={`c${i}`} className="hd" style={{ gridRow: 1, gridColumn: i + 2 }}>C{i + 1}</div>)}
         {Array.from({ length: b.rows }, (_, i) => <div key={`r${i}`} className="hd" style={{ gridRow: i + 2, gridColumn: 1 }}>R{i + 1}</div>)}

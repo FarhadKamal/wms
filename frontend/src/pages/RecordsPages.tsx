@@ -36,13 +36,14 @@ export function StockPage() {
   const [rows, setRows] = useState<StockRow[]>([]);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('all');
+  const [inStock, setInStock] = useState(true);
   const [open, setOpen] = useState<StockRow | null>(null);
   const [where, setWhere] = useState<Array<{ address: string; kind: string; boardCode: string | null; uids: string[] }>>([]);
   const [pos, setPos] = useState<string | null>(null);
   useEffect(() => { api.stock(wh).then(setRows).catch(() => setRows([])); }, [wh, version]);
   useEffect(() => { if (open) api.stockOf(wh, open.sku).then(setWhere).catch(() => setWhere([])); }, [open, wh, version]);
   const cats = [...new Set(rows.map((r) => r.category))];
-  const shown = rows.filter((r) => (cat === 'all' || r.category === cat) && (!q || `${r.name} ${r.sku} ${r.brand} ${r.aliases.join(' ')}`.toLowerCase().includes(q.toLowerCase())));
+  const shown = rows.filter((r) => (cat === 'all' || r.category === cat) && (!inStock || r.total > 0) && (!q || `${r.name} ${r.sku} ${r.brand} ${r.aliases.join(' ')}`.toLowerCase().includes(q.toLowerCase())));
 
   return (
     <>
@@ -50,6 +51,9 @@ export function StockPage() {
         <input placeholder="Search product, SKU, brand or alias code…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} />
         <button className={`filter-chip${cat === 'all' ? ' active' : ''}`} onClick={() => setCat('all')}>All</button>
         {cats.map((c) => <button key={c} className={`filter-chip${cat === c ? ' active' : ''}`} onClick={() => setCat(c)}>{c}</button>)}
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <input type="checkbox" checked={inStock} onChange={(e) => setInStock(e.target.checked)} /> Only products in stock ({rows.filter((r) => r.total > 0).length})
+        </label>
       </div>
       <div className="card table-wrap">
         <table>
@@ -66,7 +70,7 @@ export function StockPage() {
                 </tr>
               );
             })}
-            {!shown.length && <tr><td colSpan={9} className="empty">No products match.</td></tr>}
+            {!shown.length && <tr><td colSpan={9} className="empty">{inStock && !q ? 'Nothing in stock here.' : 'No products match.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -231,7 +235,7 @@ export function ChallansPage() {
 export function BoardsPage() {
   const { wh, version, run, print, can } = useWms();
   const [boards, setBoards] = useState<BoardRow[]>([]);
-  const [floor, setFloor] = useState(false);
+  const [floor, setFloor] = useState(true);
   const [pos, setPos] = useState<string | null>(null);
   useEffect(() => { api.boards(wh).then(setBoards).catch(() => setBoards([])); }, [wh, version]);
   const shown = boards.filter((b) => b.onRack || floor);
@@ -241,7 +245,7 @@ export function BoardsPage() {
     <>
       <div className="banner" style={{ background: 'var(--primary-soft)' }}>▤ <span><b>Bay boards:</b> every rack position has a board showing its items, quantity and weight. The WMS keeps the live numbers; the warehouse manager updates the physical board from this list.</span></div>
       <div className="row" style={{ marginBottom: 14 }}>
-        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={floor} onChange={(e) => setFloor(e.target.checked)} /> Include floor cells &amp; floor plates</label>
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={floor} onChange={(e) => setFloor(e.target.checked)} /> Include floor cells &amp; floor plates ({boards.filter((b) => !b.onRack).length})</label>
         <span className="spacer" />
         <button className="btn btn-sm" disabled={!shown.length} onClick={() => print(<>{shown.map(card)}</>)}>Print all changed cards</button>
         {can.moveStock && <button className="btn btn-sm btn-primary" disabled={!boards.length} onClick={() => run(() => api.boardUpdated(wh, '*'), (r) => `${r.updated} boards marked as updated.`)}>Mark all as updated</button>}

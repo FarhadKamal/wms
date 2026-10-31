@@ -147,9 +147,9 @@ tbody tr.sel { background: var(--primary-soft); }
 .legend .li { display: flex; align-items: center; gap: 6px; }
 .legend .sw { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border-strong); }
 .grid-wrap { overflow-x: auto; padding-bottom: 6px; }
-.bgrid { display: grid; gap: 4px; min-width: max-content; }
+.bgrid { --cell: 96px; display: grid; gap: 4px; min-width: max-content; } /* square cells; wide blocks scroll sideways */
 .bgrid .hd { font: 600 10.5px "IBM Plex Mono", monospace; color: var(--ink-muted); display: flex; align-items: center; justify-content: center; }
-.gcell { min-height: 56px; border-radius: 6px; border: 1px solid var(--border-strong); padding: 5px 6px; font-size: 10.5px; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; text-align: left; background: var(--panel); color: var(--ink); font-family: inherit; min-width: 0; overflow: hidden; }
+.gcell { min-height: 0; border-radius: 6px; border: 1px solid var(--border-strong); padding: 5px 6px; font-size: 10.5px; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; text-align: left; background: var(--panel); color: var(--ink); font-family: inherit; min-width: 0; overflow: hidden; }
 button.gcell { cursor: pointer; }
 button.gcell:hover { outline: 2px solid var(--primary); outline-offset: -1px; }
 .gcell .t1 { font-weight: 700; line-height: 1.2; }
